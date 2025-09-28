@@ -1,0 +1,1 @@
+from .insights import run_insights_pipeline as generate_insights
