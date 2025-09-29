@@ -1,1 +1,2 @@
 from .insights import run_insights_pipeline as generate_insights
+from .phase5_insights import analyze_d2c_data_with_creatives

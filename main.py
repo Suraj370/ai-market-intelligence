@@ -1,8 +1,9 @@
+from io import BytesIO
 import json
 import streamlit as st
 import pandas as pd
 from src.ingestion import clean_google_play_data, fetch_ios_data, combine_datasets
-from src.insights import generate_insights
+from src.insights import generate_insights, analyze_d2c_data_with_creatives
 from src.reports import generate_report
 from dotenv import load_dotenv
 
@@ -13,7 +14,7 @@ def main():
 
 
     st.sidebar.header("Navigation")
-    page = st.sidebar.radio("Go to", ["Data Ingestion & Processing", "Insights", "Dataset", "Report"])
+    page = st.sidebar.radio("Go to", ["Data Ingestion & Processing", "Insights", "Dataset", "Report", "Phase 5 D2C Analysis"])
 
     if 'android_df' not in st.session_state:
         st.session_state.android_df = pd.DataFrame()
@@ -24,8 +25,8 @@ def main():
         st.session_state.combined_df = pd.DataFrame()
     if 'insights_data' not in st.session_state:
         st.session_state.insights_data = {}
-    if 'report_path' not in st.session_state:
-        st.session_state.report_path = None
+    if 'result' not in st.session_state:
+        st.session_state.result = None
 
     if page == "Data Ingestion & Processing":
         st.header("Ingest and Process Data")
@@ -226,6 +227,70 @@ def main():
                 st.error(f"An unexpected error occurred: {e}. The 'insights' variable might have been corrupted.")
         else:
             st.warning("No insights found or invalid data format. Please go to the 'Data Ingestion & Processing' page and run the analysis first.")
+    
+    elif page == "Phase 5 D2C Analysis":
+        st.title("🚀 D2C Performance & Creative Insights Dashboard")
+        uploaded_file = st.file_uploader("Upload your D2C Excel file", type=["xlsx", "csv"])
+        if uploaded_file:
+            if uploaded_file.name.endswith(".csv"):
+                data = pd.read_csv(uploaded_file)
+            else:
+                data = pd.read_excel(uploaded_file)
+            if st.button("Analyze Data", type="primary"):
+                st.session_state.result = analyze_d2c_data_with_creatives(data=data)
+        if st.session_state.result:
+            result = st.session_state.result
+            # --- Display KPIs ---
+            kpi_df = result["kpis"].iloc[0]
+            kpi_cols = st.columns(len(kpi_df))
+            for col, (metric, value) in zip(kpi_cols, kpi_df.items()):
+                col.metric(metric, f"{value:,.2f}" if isinstance(value, (int, float)) else value)
+                
+            def convert_df(df):
+                out = BytesIO()
+                df.to_csv(out, index=False)
+                return out.getvalue()
+            st.subheader("📥 Download KPIs CSV")
+            st.download_button(
+                label="Download KPIs CSV",
+                data=convert_df(result["kpis"]),
+                file_name="kpis.csv",
+                mime="text/csv"
+            )
 
+            # --- SEO Opportunity Table ---
+            if not result["seo_opportunity"].empty:
+                st.subheader("🔍 SEO Opportunity Scores")
+                st.dataframe(result["seo_opportunity"].head(10))
+
+            # --- Retention ---
+            st.subheader("♻️ Retention Summary")
+            st.json(result["retention_summary"])
+            
+            def convert_df(df):
+                out = BytesIO()
+                df.to_csv(out, index=False)
+                return out.getvalue()
+
+            # --- Creatives ---
+            if result["creatives"]:
+                st.subheader("📝 AI-Generated Creatives")
+                for idx, creative in enumerate(result["creatives"], start=1):
+                    st.markdown(f"**Creative Set {idx}:**")
+                    st.json(creative)
+                
+                st.subheader("Download Creatives")
+                creatives_json_string = json.dumps(result["creatives"], indent=4)
+                creatives_json_bytes = creatives_json_string.encode('utf-8')
+                
+                st.download_button(
+                   label="Download Creative Sets JSON",
+                    data=creatives_json_bytes,
+                    file_name="creative_sets.json",
+                    mime="application/json"
+                )
+
+           
+        
 if __name__ == "__main__":
     main()
